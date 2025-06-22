@@ -57,6 +57,46 @@ class OpenAIUsageTracker:
                 FOREIGN KEY (session_id) REFERENCES usage_sessions (session_id)
             )
         ''')
+
+        # New table for daily usage summaries
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT UNIQUE,
+                total_tokens INTEGER DEFAULT 0,
+                total_cost REAL DEFAULT 0.0,
+                api_calls_count INTEGER DEFAULT 0,
+                models_used TEXT,
+                avg_burn_rate REAL DEFAULT 0.0,
+                peak_burn_rate REAL DEFAULT 0.0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # New table for usage alerts and notifications
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS usage_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_type TEXT,
+                threshold_value REAL,
+                current_value REAL,
+                message TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                triggered_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # New table for budget tracking
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS budget_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                month_year TEXT UNIQUE,
+                budget_limit REAL,
+                token_limit INTEGER,
+                alert_thresholds TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         
         conn.commit()
         conn.close()
@@ -190,6 +230,169 @@ class OpenAIUsageTracker:
         conn.commit()
         conn.close()
 
+    def update_daily_usage(self):
+        """Update daily usage summary."""
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Get today's usage data
+        cursor.execute('''
+            SELECT
+                SUM(total_tokens) as total_tokens,
+                SUM(cost) as total_cost,
+                COUNT(*) as api_calls_count,
+                GROUP_CONCAT(DISTINCT model) as models_used
+            FROM api_calls
+            WHERE DATE(timestamp) = ?
+        ''', (today,))
+
+        result = cursor.fetchone()
+        if result and result[0]:
+            total_tokens, total_cost, api_calls_count, models_used = result
+
+            # Calculate burn rates for today
+            cursor.execute('''
+                SELECT total_tokens, timestamp FROM api_calls
+                WHERE DATE(timestamp) = ?
+                ORDER BY timestamp
+            ''', (today,))
+
+            calls = cursor.fetchall()
+            burn_rates = []
+
+            if len(calls) > 1:
+                for i in range(1, len(calls)):
+                    prev_time = datetime.fromisoformat(calls[i-1][1])
+                    curr_time = datetime.fromisoformat(calls[i][1])
+                    time_diff = (curr_time - prev_time).total_seconds() / 60  # minutes
+
+                    if time_diff > 0:
+                        tokens_diff = calls[i][0] - calls[i-1][0]
+                        burn_rate = tokens_diff / time_diff
+                        burn_rates.append(burn_rate)
+
+            avg_burn_rate = sum(burn_rates) / len(burn_rates) if burn_rates else 0
+            peak_burn_rate = max(burn_rates) if burn_rates else 0
+
+            # Insert or update daily summary
+            cursor.execute('''
+                INSERT OR REPLACE INTO daily_usage
+                (date, total_tokens, total_cost, api_calls_count, models_used, avg_burn_rate, peak_burn_rate)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (today, total_tokens, total_cost, api_calls_count, models_used, avg_burn_rate, peak_burn_rate))
+
+        conn.commit()
+        conn.close()
+
+    def get_usage_analytics(self, days=7) -> Dict:
+        """Get usage analytics for the last N days."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Get daily usage for last N days
+        cursor.execute('''
+            SELECT * FROM daily_usage
+            WHERE date >= DATE('now', '-{} days')
+            ORDER BY date DESC
+        '''.format(days))
+
+        daily_data = cursor.fetchall()
+
+        # Get model usage breakdown
+        cursor.execute('''
+            SELECT
+                model,
+                SUM(total_tokens) as total_tokens,
+                SUM(cost) as total_cost,
+                COUNT(*) as call_count
+            FROM api_calls
+            WHERE timestamp >= DATETIME('now', '-{} days')
+            GROUP BY model
+            ORDER BY total_tokens DESC
+        '''.format(days))
+
+        model_breakdown = cursor.fetchall()
+
+        # Get hourly usage pattern
+        cursor.execute('''
+            SELECT
+                strftime('%H', timestamp) as hour,
+                AVG(total_tokens) as avg_tokens,
+                COUNT(*) as call_count
+            FROM api_calls
+            WHERE timestamp >= DATETIME('now', '-{} days')
+            GROUP BY strftime('%H', timestamp)
+            ORDER BY hour
+        '''.format(days))
+
+        hourly_pattern = cursor.fetchall()
+
+        conn.close()
+
+        return {
+            'daily_data': daily_data,
+            'model_breakdown': model_breakdown,
+            'hourly_pattern': hourly_pattern,
+            'period_days': days
+        }
+
+    def check_and_create_alerts(self, current_usage: Dict):
+        """Check usage against thresholds and create alerts."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Define alert thresholds
+        alerts_to_check = [
+            ('token_usage_50', 0.5, 'Token usage exceeded 50%'),
+            ('token_usage_75', 0.75, 'Token usage exceeded 75%'),
+            ('token_usage_90', 0.9, 'Token usage exceeded 90%'),
+            ('cost_threshold_10', 10.0, 'Monthly cost exceeded $10'),
+            ('cost_threshold_50', 50.0, 'Monthly cost exceeded $50'),
+            ('high_burn_rate', 500.0, 'High burn rate detected (>500 tokens/min)'),
+        ]
+
+        tokens_used = current_usage.get('tokens_used', 0)
+        token_limit = current_usage.get('token_limit', 1)
+        total_cost = current_usage.get('total_cost', 0)
+        burn_rate = current_usage.get('burn_rate', 0)
+
+        usage_percentage = tokens_used / token_limit if token_limit > 0 else 0
+
+        for alert_type, threshold, message in alerts_to_check:
+            should_trigger = False
+            current_value = 0
+
+            if 'token_usage' in alert_type:
+                should_trigger = usage_percentage >= threshold
+                current_value = usage_percentage
+            elif 'cost_threshold' in alert_type:
+                should_trigger = total_cost >= threshold
+                current_value = total_cost
+            elif 'burn_rate' in alert_type:
+                should_trigger = burn_rate >= threshold
+                current_value = burn_rate
+
+            if should_trigger:
+                # Check if alert already exists for today
+                today = datetime.now().strftime("%Y-%m-%d")
+                cursor.execute('''
+                    SELECT id FROM usage_alerts
+                    WHERE alert_type = ? AND DATE(triggered_at) = ?
+                ''', (alert_type, today))
+
+                if not cursor.fetchone():
+                    # Create new alert
+                    cursor.execute('''
+                        INSERT INTO usage_alerts
+                        (alert_type, threshold_value, current_value, message)
+                        VALUES (?, ?, ?, ?)
+                    ''', (alert_type, threshold, current_value, message))
+
+        conn.commit()
+        conn.close()
+
 
 def format_time(minutes):
     """Format minutes into human-readable time (e.g., '3h 45m')."""
@@ -320,6 +523,14 @@ def parse_args():
                         help='Path to SQLite database file')
     parser.add_argument('--demo', action='store_true',
                         help='Run in demo mode with simulated data')
+    parser.add_argument('--analytics', action='store_true',
+                        help='Show usage analytics and exit')
+    parser.add_argument('--export', type=str, choices=['csv', 'json'],
+                        help='Export usage data to CSV or JSON format')
+    parser.add_argument('--days', type=int, default=7,
+                        help='Number of days for analytics (default: 7)')
+    parser.add_argument('--budget', type=float,
+                        help='Set monthly budget limit in USD')
     return parser.parse_args()
 
 
@@ -389,6 +600,159 @@ def create_demo_session(tracker):
     return session_id
 
 
+def display_analytics(tracker, days=7):
+    """Display usage analytics in a beautiful format."""
+    analytics = tracker.get_usage_analytics(days)
+
+    # Color codes
+    cyan = '\033[96m'
+    green = '\033[92m'
+    blue = '\033[94m'
+    yellow = '\033[93m'
+    white = '\033[97m'
+    gray = '\033[90m'
+    reset = '\033[0m'
+
+    print(f"\n{cyan}📊 USAGE ANALYTICS - Last {days} Days{reset}")
+    print(f"{blue}{'=' * 60}{reset}\n")
+
+    # Daily usage summary
+    if analytics['daily_data']:
+        print(f"{white}📅 Daily Usage Summary:{reset}")
+        print(f"{'Date':<12} {'Tokens':<10} {'Cost':<8} {'Calls':<6} {'Avg Rate':<10} {'Peak Rate':<10}")
+        print(f"{gray}{'-' * 70}{reset}")
+
+        total_tokens = 0
+        total_cost = 0.0
+        total_calls = 0
+
+        for day in analytics['daily_data']:
+            date = day[1]
+            tokens = day[2] or 0
+            cost = day[3] or 0.0
+            calls = day[4] or 0
+            avg_rate = day[6] or 0.0
+            peak_rate = day[7] or 0.0
+
+            total_tokens += tokens
+            total_cost += cost
+            total_calls += calls
+
+            print(f"{date:<12} {tokens:<10,} ${cost:<7.2f} {calls:<6} {avg_rate:<10.1f} {peak_rate:<10.1f}")
+
+        print(f"{gray}{'-' * 70}{reset}")
+        print(f"{'TOTAL':<12} {total_tokens:<10,} ${total_cost:<7.2f} {total_calls:<6}")
+        print()
+
+    # Model breakdown
+    if analytics['model_breakdown']:
+        print(f"{white}🤖 Model Usage Breakdown:{reset}")
+        print(f"{'Model':<15} {'Tokens':<12} {'Cost':<10} {'Calls':<8} {'%':<6}")
+        print(f"{gray}{'-' * 55}{reset}")
+
+        total_model_tokens = sum(model[1] for model in analytics['model_breakdown'])
+
+        for model in analytics['model_breakdown']:
+            model_name = model[0]
+            tokens = model[1]
+            cost = model[2]
+            calls = model[3]
+            percentage = (tokens / total_model_tokens * 100) if total_model_tokens > 0 else 0
+
+            print(f"{model_name:<15} {tokens:<12,} ${cost:<9.2f} {calls:<8} {percentage:<5.1f}%")
+        print()
+
+    # Hourly usage pattern
+    if analytics['hourly_pattern']:
+        print(f"{white}⏰ Hourly Usage Pattern:{reset}")
+        print(f"{'Hour':<6} {'Avg Tokens':<12} {'Calls':<8} {'Activity':<20}")
+        print(f"{gray}{'-' * 50}{reset}")
+
+        max_tokens = max(hour[1] for hour in analytics['hourly_pattern']) if analytics['hourly_pattern'] else 1
+
+        for hour in analytics['hourly_pattern']:
+            hour_str = f"{int(hour[0]):02d}:00"
+            avg_tokens = hour[1] or 0
+            calls = hour[2] or 0
+
+            # Create simple bar chart
+            bar_length = int((avg_tokens / max_tokens) * 15) if max_tokens > 0 else 0
+            bar = '█' * bar_length + '░' * (15 - bar_length)
+
+            print(f"{hour_str:<6} {avg_tokens:<12.1f} {calls:<8} {green}{bar}{reset}")
+        print()
+
+
+def export_usage_data(tracker, format_type='csv', days=7):
+    """Export usage data to CSV or JSON."""
+    analytics = tracker.get_usage_analytics(days)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    if format_type == 'csv':
+        import csv
+        filename = f"openai_usage_{timestamp}.csv"
+
+        with open(filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+
+            # Daily usage data
+            writer.writerow(['=== DAILY USAGE ==='])
+            writer.writerow(['Date', 'Total Tokens', 'Total Cost', 'API Calls', 'Avg Burn Rate', 'Peak Burn Rate'])
+
+            for day in analytics['daily_data']:
+                writer.writerow([day[1], day[2], day[3], day[4], day[6], day[7]])
+
+            writer.writerow([])  # Empty row
+
+            # Model breakdown
+            writer.writerow(['=== MODEL BREAKDOWN ==='])
+            writer.writerow(['Model', 'Total Tokens', 'Total Cost', 'Call Count'])
+
+            for model in analytics['model_breakdown']:
+                writer.writerow([model[0], model[1], model[2], model[3]])
+
+        print(f"✅ Data exported to {filename}")
+
+    elif format_type == 'json':
+        import json
+        filename = f"openai_usage_{timestamp}.json"
+
+        export_data = {
+            'export_timestamp': datetime.now().isoformat(),
+            'period_days': days,
+            'daily_usage': [
+                {
+                    'date': day[1],
+                    'total_tokens': day[2],
+                    'total_cost': day[3],
+                    'api_calls': day[4],
+                    'avg_burn_rate': day[6],
+                    'peak_burn_rate': day[7]
+                } for day in analytics['daily_data']
+            ],
+            'model_breakdown': [
+                {
+                    'model': model[0],
+                    'total_tokens': model[1],
+                    'total_cost': model[2],
+                    'call_count': model[3]
+                } for model in analytics['model_breakdown']
+            ],
+            'hourly_pattern': [
+                {
+                    'hour': hour[0],
+                    'avg_tokens': hour[1],
+                    'call_count': hour[2]
+                } for hour in analytics['hourly_pattern']
+            ]
+        }
+
+        with open(filename, 'w') as jsonfile:
+            json.dump(export_data, jsonfile, indent=2)
+
+        print(f"✅ Data exported to {filename}")
+
+
 def main():
     """Main monitoring loop."""
     args = parse_args()
@@ -401,6 +765,32 @@ def main():
 
     # Initialize tracker
     tracker = OpenAIUsageTracker(api_key or "demo", args.db_path)
+
+    # Handle analytics mode
+    if args.analytics:
+        display_analytics(tracker, args.days)
+        return
+
+    # Handle export mode
+    if args.export:
+        export_usage_data(tracker, args.export, args.days)
+        return
+
+    # Handle budget setting
+    if args.budget:
+        month_year = datetime.now().strftime("%Y-%m")
+        conn = sqlite3.connect(args.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO budget_settings
+            (month_year, budget_limit, token_limit, alert_thresholds)
+            VALUES (?, ?, ?, ?)
+        ''', (month_year, args.budget, get_token_limit(args.plan, args.limit),
+              json.dumps([0.5, 0.75, 0.9])))
+        conn.commit()
+        conn.close()
+        print(f"✅ Monthly budget set to ${args.budget:.2f}")
+        return
 
     # Get token limit
     token_limit = get_token_limit(args.plan, args.limit)
@@ -461,6 +851,19 @@ def main():
 
             # Calculate burn rate from recent API calls
             burn_rate = calculate_hourly_burn_rate(recent_calls, current_time)
+
+            # Update daily usage summary (every 10 minutes)
+            if int(elapsed_minutes) % 10 == 0:
+                tracker.update_daily_usage()
+
+            # Check for alerts
+            usage_data = {
+                'tokens_used': tokens_used,
+                'token_limit': token_limit,
+                'total_cost': total_cost,
+                'burn_rate': burn_rate
+            }
+            tracker.check_and_create_alerts(usage_data)
 
             # Reset time calculation (monthly for OpenAI)
             # Ensure current_time is timezone-aware for reset calculation
@@ -535,6 +938,23 @@ def main():
             # Warning if tokens will run out before reset
             if predicted_end_time < reset_time and burn_rate > 0:
                 print(f"⚠️  {red}Tokens will run out BEFORE monthly reset!{reset}")
+                print()
+
+            # Show recent alerts (last 24 hours)
+            conn = sqlite3.connect(args.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT alert_type, message, triggered_at FROM usage_alerts
+                WHERE triggered_at >= DATETIME('now', '-1 day') AND is_active = 1
+                ORDER BY triggered_at DESC LIMIT 3
+            ''')
+            recent_alerts = cursor.fetchall()
+            conn.close()
+
+            if recent_alerts:
+                for alert in recent_alerts:
+                    alert_time = datetime.fromisoformat(alert[2]).strftime("%H:%M")
+                    print(f"🔔 {yellow}{alert[1]}{reset} {gray}({alert_time}){reset}")
                 print()
 
             # Status line

@@ -61,6 +61,9 @@ logs/
 .env.test.local
 .env.production.local
 
+# API Key setup (contains sensitive information)
+setup_env.sh
+
 # Temporary files
 *.tmp
 *.temp

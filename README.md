@@ -142,6 +142,11 @@ pip install -r requirements.txt
 # 5. Set your OpenAI API key
 export OPENAI_API_KEY="your-api-key-here"
 
+# Alternative: Use the setup template
+cp setup_env_template.sh setup_env.sh
+# Edit setup_env.sh with your actual API key, then:
+# source setup_env.sh
+
 # 6. Make script executable (Linux/Mac only)
 chmod +x openai_usage_monitor.py
 
@@ -293,6 +298,53 @@ The default timezone is **UTC**. Change it to any valid timezone:
 - **Real-time Cost Monitoring**: Track API spending as it happens
 - **Model-specific Pricing**: Different costs for different models
 - **Monthly Budget Tracking**: Monitor against your usage tier limits
+
+### 🚀 Enhanced Features (NEW!)
+
+#### 📊 Advanced Analytics
+- **Usage History**: Track daily, weekly, and monthly usage patterns
+- **Model Breakdown**: Detailed analysis by GPT-4, GPT-3.5-turbo, etc.
+- **Hourly Patterns**: Understand when you use the API most
+- **Burn Rate Analysis**: Track token consumption trends over time
+
+#### 📈 Smart Reporting & Export
+- **CSV Export**: Export usage data for spreadsheet analysis
+- **JSON Export**: Machine-readable data for integration with other tools
+- **Historical Reports**: Generate reports for any time period (7, 30, 90 days)
+- **Cost Analysis**: Detailed cost breakdowns by model and time period
+
+#### 💰 Budget Management
+- **Monthly Budgets**: Set spending limits with automatic alerts
+- **Smart Thresholds**: Get notified at 50%, 75%, and 90% usage
+- **Cost Predictions**: Forecast monthly spending based on current usage
+- **Budget Tracking**: Monitor spending against your set limits
+
+#### 🔔 Intelligent Alerts
+- **Usage Warnings**: Early alerts before hitting token limits
+- **Unusual Patterns**: Detect spikes in usage or unexpected costs
+- **Budget Notifications**: Stay within your monthly budget
+- **Real-time Alerts**: Get notified during monitoring sessions
+
+#### 🎯 Quick Commands
+```bash
+# View analytics for last 7 days
+./start_openai_monitor.sh analytics
+
+# View analytics for last 30 days
+./start_openai_monitor.sh analytics-30
+
+# Export usage data to CSV
+./start_openai_monitor.sh export-csv
+
+# Export usage data to JSON
+./start_openai_monitor.sh export-json
+
+# Set monthly budget to $50
+./start_openai_monitor.sh budget-50
+
+# Set monthly budget to $100
+./start_openai_monitor.sh budget-100
+```
 
 ### Understanding OpenAI Usage
 

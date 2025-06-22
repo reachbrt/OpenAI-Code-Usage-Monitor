@@ -1,0 +1,42 @@
+{
+  "export_timestamp": "2025-06-22T00:48:04.825308",
+  "period_days": 7,
+  "daily_usage": [],
+  "model_breakdown": [
+    {
+      "model": "gpt-4",
+      "total_tokens": 25350,
+      "total_cost": 1.014,
+      "call_count": 52
+    },
+    {
+      "model": "gpt-4-turbo",
+      "total_tokens": 20475,
+      "total_cost": 0.8190000000000001,
+      "call_count": 39
+    },
+    {
+      "model": "gpt-3.5-turbo",
+      "total_tokens": 17550,
+      "total_cost": 0.7020000000000001,
+      "call_count": 39
+    }
+  ],
+  "hourly_pattern": [
+    {
+      "hour": "00",
+      "avg_tokens": 754.1666666666666,
+      "call_count": 18
+    },
+    {
+      "hour": "22",
+      "avg_tokens": 422.36842105263156,
+      "call_count": 38
+    },
+    {
+      "hour": "23",
+      "avg_tokens": 456.0810810810811,
+      "call_count": 74
+    }
+  ]
+}

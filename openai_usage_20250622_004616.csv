@@ -1,0 +1,8 @@
+=== DAILY USAGE ===
+Date,Total Tokens,Total Cost,API Calls,Avg Burn Rate,Peak Burn Rate
+
+=== MODEL BREAKDOWN ===
+Model,Total Tokens,Total Cost,Call Count
+gpt-4,25350,1.014,52
+gpt-4-turbo,20475,0.8190000000000001,39
+gpt-3.5-turbo,17550,0.7020000000000001,39

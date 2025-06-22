@@ -48,13 +48,68 @@ A beautiful real-time terminal monitoring tool for OpenAI API token usage. Track
 - **🗄️ Local database** - SQLite storage for session and usage tracking
 - **🎭 Demo mode** - Test the monitor with simulated data
 
+## 🚀 **NEW! Enhanced Features**
+
+Your OpenAI Usage Monitor now includes powerful analytics and management capabilities:
+
+### 📊 **Advanced Analytics & Reporting**
+- **📈 Usage Analytics** - View detailed usage patterns for 7, 30, or custom days
+- **🤖 Model Breakdown** - Track usage by GPT-4, GPT-3.5-turbo, GPT-4-turbo, etc.
+- **⏰ Hourly Patterns** - Understand peak usage times with beautiful charts
+- **📄 Export Options** - Export data to CSV or JSON for analysis and reporting
+- **📊 Burn Rate Analysis** - Track token consumption trends over time
+
+### 💰 **Smart Budget Management**
+- **💵 Monthly Budgets** - Set spending limits ($10, $50, $100, custom)
+- **🔔 Smart Alerts** - Get notified at 50%, 75%, and 90% usage thresholds
+- **💡 Cost Predictions** - Forecast monthly spending based on current usage
+- **📈 Budget Tracking** - Monitor spending against your set limits
+
+### 🎯 **Quick Enhanced Commands**
+```bash
+# 📊 Analytics Commands
+./start_openai_monitor.sh analytics      # View 7-day analytics
+./start_openai_monitor.sh analytics-30   # View 30-day analytics
+
+# 📄 Export Commands
+./start_openai_monitor.sh export-csv     # Export to CSV
+./start_openai_monitor.sh export-json    # Export to JSON
+
+# 💰 Budget Commands
+./start_openai_monitor.sh budget-50      # Set $50 monthly budget
+./start_openai_monitor.sh budget-100     # Set $100 monthly budget
+
+# 📊 Enhanced Monitoring
+./start_openai_monitor.sh tier2          # Monitor with smart alerts
+```
+
+### 📈 **Real Analytics Example**
+```
+📊 USAGE ANALYTICS - Last 7 Days
+============================================================
+
+🤖 Model Usage Breakdown:
+Model           Tokens       Cost       Calls    %
+-------------------------------------------------------
+gpt-4           25,350       $1.01      52       40.0 %
+gpt-4-turbo     20,475       $0.82      39       32.3 %
+gpt-3.5-turbo   17,550       $0.70      39       27.7 %
+
+⏰ Hourly Usage Pattern:
+Hour   Avg Tokens   Calls    Activity
+--------------------------------------------------
+00:00  754.2        18       ███████████████
+22:00  422.4        38       ████████░░░░░░░
+23:00  456.1        74       █████████░░░░░░
+```
+
 ---
 
 ## 🚀 Installation
 
 ### ⚡ Quick Start
 
-For immediate testing with demo mode:
+For immediate testing with enhanced features:
 
 ```bash
 # Clone and setup
@@ -64,8 +119,17 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Run demo mode
-python openai_usage_monitor.py --demo
+# 🎭 Test the enhanced interface
+./start_openai_monitor.sh demo
+
+# 📊 View analytics (works with demo data)
+./start_openai_monitor.sh analytics
+
+# 📄 Export demo data
+./start_openai_monitor.sh export-csv
+
+# 💰 Set a budget
+./start_openai_monitor.sh budget-50
 ```
 
 ### 🔒 Production Setup (Recommended)
@@ -253,13 +317,26 @@ The default timezone is **UTC**. Change it to any valid timezone:
 ./openai_usage_monitor.py --timezone UTC
 ```
 
-#### Quick Start Script
+#### Enhanced Quick Start Script
 
 ```bash
-# Use the convenient start script
-./start_openai_monitor.sh demo     # Demo mode
-./start_openai_monitor.sh tier2    # Tier 2 limits
-./start_openai_monitor.sh tier3    # Tier 3 limits
+# 📊 Monitoring Options
+./start_openai_monitor.sh demo     # Demo mode with simulated data
+./start_openai_monitor.sh tier2    # Tier 2 limits (500k tokens)
+./start_openai_monitor.sh tier3    # Tier 3 limits (1M tokens)
+
+# 📈 Analytics & Reports
+./start_openai_monitor.sh analytics     # 7-day usage analytics
+./start_openai_monitor.sh analytics-30  # 30-day usage analytics
+./start_openai_monitor.sh export-csv    # Export to CSV
+./start_openai_monitor.sh export-json   # Export to JSON
+
+# 💰 Budget Management
+./start_openai_monitor.sh budget-50     # Set $50 monthly budget
+./start_openai_monitor.sh budget-100    # Set $100 monthly budget
+
+# 🔧 Help & Options
+./start_openai_monitor.sh help          # Show all options
 ```
 
 ### Available Plans
@@ -357,14 +434,18 @@ OpenAI operates on a **monthly billing cycle**:
 3. **Model Costs**: Different models have different per-token costs
 4. **Real-time Usage**: API calls are tracked immediately
 
-#### Session Management
+#### Enhanced Session Management
 
-The monitor creates **usage sessions** to track your API consumption:
+The monitor creates **comprehensive usage tracking** with advanced analytics:
 
 1. **Session Start**: Begins when you start the monitor
-2. **API Call Logging**: Each API call is logged with tokens and cost
+2. **API Call Logging**: Each API call is logged with tokens, cost, and model
 3. **Burn Rate Calculation**: Based on API calls in the last hour
 4. **Session Persistence**: Data stored in local SQLite database
+5. **NEW: Daily Summaries**: Automatic daily usage aggregation
+6. **NEW: Alert Tracking**: Smart alerts with threshold monitoring
+7. **NEW: Budget Management**: Monthly budget tracking and alerts
+8. **NEW: Historical Analytics**: Long-term usage pattern analysis
 
 #### Burn Rate Calculation
 
@@ -396,6 +477,50 @@ The monitor calculates burn rate using sophisticated analysis:
 
 ---
 
+## 🚀 Enhanced Usage Examples
+
+### 📊 **Analytics & Reporting Examples**
+
+#### View Usage Analytics
+```bash
+# View 7-day analytics with model breakdown
+./start_openai_monitor.sh analytics
+
+# View 30-day analytics for monthly planning
+./start_openai_monitor.sh analytics-30
+
+# Advanced analytics with custom days
+python3 openai_usage_monitor.py --analytics --days 14
+```
+
+#### Export Usage Data
+```bash
+# Export to CSV for spreadsheet analysis
+./start_openai_monitor.sh export-csv
+# Creates: openai_usage_20250622_123456.csv
+
+# Export to JSON for system integration
+./start_openai_monitor.sh export-json
+# Creates: openai_usage_20250622_123456.json
+
+# Export with custom time period
+python3 openai_usage_monitor.py --export csv --days 30
+```
+
+#### Budget Management
+```bash
+# Set monthly budget limits
+./start_openai_monitor.sh budget-50    # $50/month
+./start_openai_monitor.sh budget-100   # $100/month
+
+# Custom budget with advanced options
+python3 openai_usage_monitor.py --budget 75.50
+```
+
+### 🎯 **Real-World Scenarios**
+
+---
+
 ## 🚀 Usage Examples
 
 ### Common Scenarios
@@ -404,15 +529,25 @@ The monitor calculates burn rate using sophisticated analysis:
 **Scenario**: You're working on a project and want to monitor API usage across your team.
 
 ```bash
-# Set up monitoring for your timezone
+# Set up enhanced monitoring for your timezone
 export OPENAI_API_KEY="your-key"
-./openai_usage_monitor.py --plan tier3 --timezone US/Eastern
+./start_openai_monitor.sh tier3
+
+# Set team budget and track usage
+./start_openai_monitor.sh budget-100
+
+# Generate weekly team reports
+./start_openai_monitor.sh analytics
+./start_openai_monitor.sh export-csv
 ```
 
-**Benefits**:
+**Enhanced Benefits**:
 - Track monthly usage against your tier limits
-- Monitor costs in real-time
+- Monitor costs in real-time with smart alerts
 - Get early warnings before hitting limits
+- **NEW**: Generate team reports and analytics
+- **NEW**: Export data for management reporting
+- **NEW**: Set team budgets with automatic alerts
 
 #### 🌙 Individual Developer
 **Scenario**: You're building a personal project and want to stay within budget.
@@ -566,18 +701,23 @@ export OPENAI_API_KEY="your-key"
    - Enable color support for better visual feedback
    - Consider dedicated terminal window for monitoring
 
-2. **Workflow Integration**
+2. **Enhanced Workflow Integration**
    ```bash
-   # Start monitoring with your development session
-   tmux new-session -d -s openai-monitor './openai_usage_monitor.py --plan tier2'
+   # Start monitoring with analytics
+   tmux new-session -d -s openai-monitor './start_openai_monitor.sh tier2'
 
-   # Check status anytime
-   tmux attach -t openai-monitor
+   # Check analytics anytime
+   ./start_openai_monitor.sh analytics
+
+   # Export reports for meetings
+   ./start_openai_monitor.sh export-csv
    ```
 
-3. **Cost Management Strategy**
-   - Monitor different model costs (GPT-4 vs GPT-3.5-turbo)
-   - Track monthly spending against your budget
+3. **Advanced Cost Management Strategy**
+   - Monitor different model costs with detailed breakdowns
+   - Set and track monthly budgets with smart alerts
+   - Use analytics to optimize model selection
+   - Export data for business intelligence and reporting
    - Use demo mode for testing interface changes
 
 #### Real-World Workflows
@@ -638,6 +778,77 @@ If you can't connect to the OpenAI API:
 2. Verify your API key is valid
 3. Check OpenAI service status
 4. Try demo mode to test the interface
+
+---
+
+## 🎉 **What's New in the Enhanced Version**
+
+### ✨ **Major Feature Additions**
+
+#### 📊 **Advanced Analytics**
+- **Daily/Weekly/Monthly Trends**: Track usage patterns over time
+- **Model-Specific Breakdown**: See usage by GPT-4, GPT-3.5-turbo, etc.
+- **Hourly Usage Patterns**: Beautiful charts showing peak usage times
+- **Burn Rate Analysis**: Track token consumption trends
+
+#### 📈 **Professional Reporting**
+- **CSV Export**: Perfect for spreadsheet analysis and team sharing
+- **JSON Export**: Machine-readable data for system integrations
+- **Historical Reports**: Generate reports for any time period
+- **Timestamped Files**: Professional naming with automatic timestamps
+
+#### 💰 **Smart Budget Management**
+- **Monthly Budgets**: Set spending limits with easy commands
+- **Automatic Alerts**: Get notified at 50%, 75%, and 90% thresholds
+- **Cost Predictions**: Forecast monthly spending based on usage
+- **Budget Persistence**: Settings saved and tracked over time
+
+#### 🔔 **Intelligent Alert System**
+- **Real-time Notifications**: See alerts during monitoring sessions
+- **Threshold Detection**: Smart alerts for usage and cost limits
+- **Historical Tracking**: All alerts saved with timestamps
+- **Pattern Recognition**: Detect unusual usage spikes
+
+#### 🎯 **Enhanced User Experience**
+- **Categorized Help**: Organized options for easy navigation
+- **Quick Commands**: Simple scripts for all major functions
+- **Beautiful Interface**: Enhanced visuals with progress bars
+- **Professional Output**: Clean, organized data presentation
+
+### 🚀 **Ready for Enterprise Use**
+
+The enhanced OpenAI Usage Monitor is now suitable for:
+- **Individual Developers**: Personal project cost tracking
+- **Development Teams**: Collaborative usage monitoring
+- **Production Applications**: Real-time cost management
+- **Business Intelligence**: Data export and analysis
+- **Budget Planning**: Monthly cost forecasting and control
+
+### 📊 **Example Enhanced Output**
+
+```bash
+# Analytics Command Output
+./start_openai_monitor.sh analytics
+
+📊 USAGE ANALYTICS - Last 7 Days
+============================================================
+
+🤖 Model Usage Breakdown:
+Model           Tokens       Cost       Calls    %
+-------------------------------------------------------
+gpt-4           25,350       $1.01      52       40.0 %
+gpt-4-turbo     20,475       $0.82      39       32.3 %
+gpt-3.5-turbo   17,550       $0.70      39       27.7 %
+
+⏰ Hourly Usage Pattern:
+Hour   Avg Tokens   Calls    Activity
+--------------------------------------------------
+00:00  754.2        18       ███████████████
+22:00  422.4        38       ████████░░░░░░░
+23:00  456.1        74       █████████░░░░░░
+```
+
+**Happy monitoring with enhanced features!** 🚀📊
 
 ---
 

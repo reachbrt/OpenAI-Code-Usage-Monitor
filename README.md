@@ -1,10 +1,17 @@
 # 🎯 OpenAI API Usage Monitor
 
-[![Python Version](https://img.shields.io/badge/python-3.6+-blue.svg)](https://python.org)
+[![Python Version](https://img.shields.io/badge/python-3.7+-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
+[![GitHub Stars](https://img.shields.io/github/stars/reachbrt/OpenAI-Code-Usage-Monitor.svg)](https://github.com/reachbrt/OpenAI-Code-Usage-Monitor/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/reachbrt/OpenAI-Code-Usage-Monitor.svg)](https://github.com/reachbrt/OpenAI-Code-Usage-Monitor/network)
+[![GitHub Issues](https://img.shields.io/github/issues/reachbrt/OpenAI-Code-Usage-Monitor.svg)](https://github.com/reachbrt/OpenAI-Code-Usage-Monitor/issues)
 
 A beautiful real-time terminal monitoring tool for OpenAI API token usage. Track your token consumption, burn rate, costs, and get predictions about when you'll run out of tokens.
+
+![OpenAI Usage Monitor Screenshot](doc/screenshot.png)
+
+> **🎭 Try it now**: `./start_openai_monitor.sh demo` - No API key required!
 
 ![OpenAI Token Monitor Screenshot](doc/sc.png)
 
@@ -852,6 +859,14 @@ Hour   Avg Tokens   Calls    Activity
 
 ---
 
+## 🏷️ **Topics & Keywords**
+
+**Primary Topics**: `openai` `api-monitoring` `token-tracking` `cost-management` `analytics` `budget-management` `terminal` `python` `real-time-monitoring` `usage-analytics`
+
+**Use Cases**: `ai-development` `cost-optimization` `api-limits` `budget-tracking` `team-monitoring` `production-monitoring` `openai-api` `gpt-4` `gpt-3.5-turbo`
+
+---
+
 ## 📞 Contact
 
 Have questions, suggestions, or want to collaborate? Feel free to reach out!
@@ -897,4 +912,8 @@ Built with modern Python architecture and designed for developers who need preci
 
 ## Star History
 
+## ⭐ **Star History**
+
 [![Star History Chart](https://api.star-history.com/svg?repos=reachbrt/OpenAI-Code-Usage-Monitor&type=Date)](https://www.star-history.com/#reachbrt/OpenAI-Code-Usage-Monitor&Date)
+
+**⭐ Star this repo if you find it useful! ⭐**

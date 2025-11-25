@@ -70,6 +70,16 @@ Your OpenAI Usage Monitor now includes powerful analytics and management capabil
 - **💡 Cost Predictions** - Forecast monthly spending based on current usage
 - **📈 Budget Tracking** - Monitor spending against your set limits
 
+### 🔑 **Multi-Key/User Tracking** ⭐ NEW!
+- **👥 Multi-User Support** - Track usage across multiple API keys/users
+- **🏢 Team Management** - Monitor usage per team member or project
+- **🌍 Environment Separation** - Track prod/dev/test environments separately
+- **📊 Comparative Analytics** - Compare usage across all keys side-by-side
+- **💰 Per-Key Cost Allocation** - Understand spending per key/user/project
+- **🔒 Secure Key Storage** - API keys hashed with SHA-256 encryption
+- **📈 Per-Key Analytics** - Detailed analytics for individual keys
+- **🎯 Flexible Management** - Add, list, remove, and monitor specific keys
+
 ### 🎯 **Quick Enhanced Commands**
 ```bash
 # 📊 Analytics Commands
@@ -83,6 +93,13 @@ Your OpenAI Usage Monitor now includes powerful analytics and management capabil
 # 💰 Budget Commands
 ./start_openai_monitor.sh budget-50      # Set $50 monthly budget
 ./start_openai_monitor.sh budget-100     # Set $100 monthly budget
+
+# 🔑 Multi-Key Management Commands (NEW!)
+./start_openai_monitor.sh add-key "Production" "Main API key"  # Add new key
+./start_openai_monitor.sh list-keys                            # List all keys
+./start_openai_monitor.sh compare-keys 30                      # Compare keys
+./start_openai_monitor.sh all-keys 7                           # Analytics for all keys
+./start_openai_monitor.sh remove-key "Development"             # Remove a key
 
 # 📊 Enhanced Monitoring
 ./start_openai_monitor.sh tier2          # Monitor with smart alerts
@@ -407,6 +424,79 @@ The default timezone is **UTC**. Change it to any valid timezone:
 - **Budget Notifications**: Stay within your monthly budget
 - **Real-time Alerts**: Get notified during monitoring sessions
 
+#### 🔑 Multi-Key/User Tracking (NEW!)
+- **Multi-User Support**: Track usage across multiple API keys, users, or team members
+- **Environment Separation**: Monitor production, development, and testing environments separately
+- **Project-Based Tracking**: Allocate costs and usage per project or client
+- **Comparative Analytics**: Side-by-side comparison of usage across all keys
+- **Per-Key Budgets**: Individual budget tracking for each key (coming soon)
+- **Secure Storage**: API keys hashed with SHA-256 before storage
+- **Flexible Management**: Easy add, list, remove, and monitor operations
+- **Usage Summaries**: Quick overview of tokens, costs, and calls per key
+
+**Key Management Commands:**
+```bash
+# Add API keys
+./start_openai_monitor.sh add-key "Production" "Main production key"
+./start_openai_monitor.sh add-key "Development" "Dev environment"
+
+# List all keys with usage statistics
+./start_openai_monitor.sh list-keys
+
+# Compare usage across all keys
+./start_openai_monitor.sh compare-keys 30
+
+# View analytics for all keys
+./start_openai_monitor.sh all-keys 7
+
+# Monitor specific key
+./start_openai_monitor.sh monitor-key "key_20251124_195012"
+
+# Remove a key
+./start_openai_monitor.sh remove-key "Development"
+```
+
+**Example Output - List Keys:**
+```
+================================================================================
+📋 API KEYS
+================================================================================
+
+🟢 Active Production
+   ID: key_20251124_195012
+   Description: Main production API key
+   Created: 2025-11-25 01:50:12
+   Usage (30 days): 125,450 tokens, $3.45, 234 calls
+
+🟢 Active Development
+   ID: key_20251124_195018
+   Description: Development environment
+   Created: 2025-11-25 01:50:18
+   Usage (30 days): 45,230 tokens, $1.12, 89 calls
+```
+
+**Example Output - Compare Keys:**
+```
+================================================================================
+📊 KEY COMPARISON - Last 30 Days
+================================================================================
+
+Key Name                      Tokens          Cost      Calls       %
+--------------------------------------------------------------------------------
+Production              125,450      $3.45        234    73.5%
+Development              45,230      $1.12         89    26.5%
+--------------------------------------------------------------------------------
+TOTAL                   170,680      $4.57        323   100.0%
+```
+
+**Use Cases:**
+- **Team Management**: Track usage per team member
+- **Environment Separation**: Monitor prod/dev/test separately
+- **Project Tracking**: Allocate costs per project
+- **Client Billing**: Track usage per client
+- **Multi-tenant Apps**: Separate usage by tenant
+- **Cost Allocation**: Understand where your API costs are going
+
 #### 🎯 Quick Commands
 ```bash
 # View analytics for last 7 days
@@ -426,6 +516,13 @@ The default timezone is **UTC**. Change it to any valid timezone:
 
 # Set monthly budget to $100
 ./start_openai_monitor.sh budget-100
+
+# Multi-key management (NEW!)
+./start_openai_monitor.sh add-key "Production" "Main API key"
+./start_openai_monitor.sh list-keys
+./start_openai_monitor.sh compare-keys 30
+./start_openai_monitor.sh all-keys 7
+./start_openai_monitor.sh remove-key "Development"
 ```
 
 ### Understanding OpenAI Usage
@@ -522,6 +619,39 @@ python3 openai_usage_monitor.py --export csv --days 30
 python3 openai_usage_monitor.py --budget 75.50
 ```
 
+#### Multi-Key/User Tracking (NEW!)
+```bash
+# Add API keys for different users/environments
+export OPENAI_API_KEY='sk-prod...'
+./start_openai_monitor.sh add-key "Production" "Main production API key"
+
+export OPENAI_API_KEY='sk-dev...'
+./start_openai_monitor.sh add-key "Development" "Dev environment"
+
+export OPENAI_API_KEY='sk-test...'
+./start_openai_monitor.sh add-key "Testing" "QA testing key"
+
+# List all registered keys with usage stats
+./start_openai_monitor.sh list-keys
+
+# Compare usage across all keys
+./start_openai_monitor.sh compare-keys 30  # Last 30 days
+
+# View analytics for all keys
+./start_openai_monitor.sh all-keys 7  # Last 7 days
+
+# Monitor a specific key
+./start_openai_monitor.sh monitor-key "key_20251124_195012"
+
+# Remove a key
+./start_openai_monitor.sh remove-key "Development"
+
+# Advanced Python CLI
+python3 openai_usage_monitor.py --list-keys
+python3 openai_usage_monitor.py --compare-keys --days 30
+python3 openai_usage_monitor.py --all-keys --days 7
+```
+
 ### 🎯 **Real-World Scenarios**
 
 ---
@@ -553,6 +683,44 @@ export OPENAI_API_KEY="your-key"
 - **NEW**: Generate team reports and analytics
 - **NEW**: Export data for management reporting
 - **NEW**: Set team budgets with automatic alerts
+
+#### 👥 Multi-Team/Multi-Project (NEW!)
+**Scenario**: You manage multiple teams, projects, or environments with separate API keys.
+
+```bash
+# Add keys for different teams/projects
+export OPENAI_API_KEY='sk-team-a...'
+./start_openai_monitor.sh add-key "Team-A" "Frontend team API key"
+
+export OPENAI_API_KEY='sk-team-b...'
+./start_openai_monitor.sh add-key "Team-B" "Backend team API key"
+
+export OPENAI_API_KEY='sk-prod...'
+./start_openai_monitor.sh add-key "Production" "Production environment"
+
+export OPENAI_API_KEY='sk-dev...'
+./start_openai_monitor.sh add-key "Development" "Dev environment"
+
+# Monitor all keys
+./start_openai_monitor.sh list-keys
+
+# Compare usage across teams/projects
+./start_openai_monitor.sh compare-keys 30
+
+# Generate per-team analytics
+./start_openai_monitor.sh all-keys 7
+
+# Export for billing/reporting
+./start_openai_monitor.sh export-csv
+```
+
+**Benefits**:
+- **Cost Allocation**: Track spending per team, project, or environment
+- **Usage Comparison**: See which teams/projects use the most tokens
+- **Budget Management**: Allocate budgets per key (coming soon)
+- **Environment Separation**: Keep prod/dev/test usage separate
+- **Client Billing**: Track usage per client for accurate billing
+- **Team Accountability**: Monitor individual team API consumption
 
 #### 🌙 Individual Developer
 **Scenario**: You're building a personal project and want to stay within budget.
@@ -790,29 +958,42 @@ If you can't connect to the OpenAI API:
 
 ### ✨ **Major Feature Additions**
 
+#### 🔑 **Multi-Key/User Tracking** ⭐ NEWEST!
+- **Multi-User Support**: Track usage across multiple API keys, users, or team members
+- **Environment Separation**: Monitor production, development, and testing separately
+- **Comparative Analytics**: Side-by-side comparison of usage across all keys
+- **Per-Key Cost Allocation**: Understand spending per key/user/project
+- **Secure Storage**: API keys hashed with SHA-256 encryption
+- **Flexible Management**: Easy add, list, remove, and monitor operations
+- **Team Collaboration**: Perfect for teams, agencies, and multi-project setups
+
 #### 📊 **Advanced Analytics**
 - **Daily/Weekly/Monthly Trends**: Track usage patterns over time
 - **Model-Specific Breakdown**: See usage by GPT-4, GPT-3.5-turbo, etc.
 - **Hourly Usage Patterns**: Beautiful charts showing peak usage times
 - **Burn Rate Analysis**: Track token consumption trends
+- **Per-Key Analytics**: Detailed analytics for individual keys (NEW!)
 
 #### 📈 **Professional Reporting**
 - **CSV Export**: Perfect for spreadsheet analysis and team sharing
 - **JSON Export**: Machine-readable data for system integrations
 - **Historical Reports**: Generate reports for any time period
 - **Timestamped Files**: Professional naming with automatic timestamps
+- **Multi-Key Reports**: Export data per key or across all keys (NEW!)
 
 #### 💰 **Smart Budget Management**
 - **Monthly Budgets**: Set spending limits with easy commands
 - **Automatic Alerts**: Get notified at 50%, 75%, and 90% thresholds
 - **Cost Predictions**: Forecast monthly spending based on usage
 - **Budget Persistence**: Settings saved and tracked over time
+- **Per-Key Budgets**: Individual budget tracking (coming soon)
 
 #### 🔔 **Intelligent Alert System**
 - **Real-time Notifications**: See alerts during monitoring sessions
 - **Threshold Detection**: Smart alerts for usage and cost limits
 - **Historical Tracking**: All alerts saved with timestamps
 - **Pattern Recognition**: Detect unusual usage spikes
+- **Per-Key Alerts**: Alerts specific to each key (NEW!)
 
 #### 🎯 **Enhanced User Experience**
 - **Categorized Help**: Organized options for easy navigation
@@ -824,10 +1005,13 @@ If you can't connect to the OpenAI API:
 
 The enhanced OpenAI Usage Monitor is now suitable for:
 - **Individual Developers**: Personal project cost tracking
-- **Development Teams**: Collaborative usage monitoring
-- **Production Applications**: Real-time cost management
-- **Business Intelligence**: Data export and analysis
+- **Development Teams**: Collaborative usage monitoring with multi-key support
+- **Production Applications**: Real-time cost management across environments
+- **Business Intelligence**: Data export and analysis with per-key breakdowns
 - **Budget Planning**: Monthly cost forecasting and control
+- **Multi-Team Organizations**: Track usage per team, project, or client
+- **Agencies & Consultants**: Monitor multiple client API keys separately
+- **Multi-Environment Setups**: Separate tracking for prod/dev/test/staging
 
 ### 📊 **Example Enhanced Output**
 

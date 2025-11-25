@@ -11,26 +11,42 @@ import requests
 from typing import Dict, List, Optional, Tuple
 import sqlite3
 from pathlib import Path
+import hashlib
 
 
 class OpenAIUsageTracker:
     """Track OpenAI API usage and store in local database."""
-    
-    def __init__(self, api_key: str, db_path: str = "openai_usage.db"):
+
+    def __init__(self, api_key: str = None, db_path: str = "openai_usage.db", key_id: str = None):
         self.api_key = api_key
         self.db_path = db_path
         self.base_url = "https://api.openai.com/v1"
+        self.key_id = key_id
         self.init_database()
     
     def init_database(self):
         """Initialize SQLite database for storing usage data."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
+        # New table for API keys/users
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key_id TEXT UNIQUE,
+                key_name TEXT,
+                key_description TEXT,
+                api_key_hash TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS usage_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT UNIQUE,
+                key_id TEXT,
                 start_time TEXT,
                 end_time TEXT,
                 total_tokens INTEGER DEFAULT 0,
@@ -39,14 +55,16 @@ class OpenAIUsageTracker:
                 total_cost REAL DEFAULT 0.0,
                 model TEXT,
                 is_active BOOLEAN DEFAULT 1,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (key_id) REFERENCES api_keys (key_id)
             )
         ''')
-        
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS api_calls (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT,
+                key_id TEXT,
                 timestamp TEXT,
                 model TEXT,
                 prompt_tokens INTEGER,
@@ -54,7 +72,8 @@ class OpenAIUsageTracker:
                 total_tokens INTEGER,
                 cost REAL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (session_id) REFERENCES usage_sessions (session_id)
+                FOREIGN KEY (session_id) REFERENCES usage_sessions (session_id),
+                FOREIGN KEY (key_id) REFERENCES api_keys (key_id)
             )
         ''')
 
@@ -62,14 +81,17 @@ class OpenAIUsageTracker:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS daily_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT UNIQUE,
+                date TEXT,
+                key_id TEXT,
                 total_tokens INTEGER DEFAULT 0,
                 total_cost REAL DEFAULT 0.0,
                 api_calls_count INTEGER DEFAULT 0,
                 models_used TEXT,
                 avg_burn_rate REAL DEFAULT 0.0,
                 peak_burn_rate REAL DEFAULT 0.0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, key_id),
+                FOREIGN KEY (key_id) REFERENCES api_keys (key_id)
             )
         ''')
 
@@ -77,12 +99,14 @@ class OpenAIUsageTracker:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS usage_alerts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key_id TEXT,
                 alert_type TEXT,
                 threshold_value REAL,
                 current_value REAL,
                 message TEXT,
                 is_active BOOLEAN DEFAULT 1,
-                triggered_at TEXT DEFAULT CURRENT_TIMESTAMP
+                triggered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (key_id) REFERENCES api_keys (key_id)
             )
         ''')
 
@@ -90,17 +114,225 @@ class OpenAIUsageTracker:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS budget_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                month_year TEXT UNIQUE,
+                month_year TEXT,
+                key_id TEXT,
                 budget_limit REAL,
                 token_limit INTEGER,
                 alert_thresholds TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(month_year, key_id),
+                FOREIGN KEY (key_id) REFERENCES api_keys (key_id)
             )
         ''')
-        
+
+        # Migration: Add key_id column to existing tables if not exists
+        self._migrate_schema(cursor)
+
         conn.commit()
         conn.close()
-    
+
+    def _migrate_schema(self, cursor):
+        """Migrate existing database schema to support multi-key tracking."""
+        # Check if key_id column exists in usage_sessions
+        cursor.execute("PRAGMA table_info(usage_sessions)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if 'key_id' not in columns:
+            try:
+                cursor.execute("ALTER TABLE usage_sessions ADD COLUMN key_id TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+        # Check if key_id column exists in api_calls
+        cursor.execute("PRAGMA table_info(api_calls)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if 'key_id' not in columns:
+            try:
+                cursor.execute("ALTER TABLE api_calls ADD COLUMN key_id TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+        # Check if key_id column exists in daily_usage
+        cursor.execute("PRAGMA table_info(daily_usage)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if 'key_id' not in columns:
+            try:
+                cursor.execute("ALTER TABLE daily_usage ADD COLUMN key_id TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+        # Check if key_id column exists in usage_alerts
+        cursor.execute("PRAGMA table_info(usage_alerts)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if 'key_id' not in columns:
+            try:
+                cursor.execute("ALTER TABLE usage_alerts ADD COLUMN key_id TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+        # Check if key_id column exists in budget_settings
+        cursor.execute("PRAGMA table_info(budget_settings)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if 'key_id' not in columns:
+            try:
+                cursor.execute("ALTER TABLE budget_settings ADD COLUMN key_id TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+    # ============================================================================
+    # KEY MANAGEMENT METHODS
+    # ============================================================================
+
+    def _hash_api_key(self, api_key: str) -> str:
+        """Hash API key for secure storage."""
+        return hashlib.sha256(api_key.encode()).hexdigest()
+
+    def _mask_api_key(self, api_key: str) -> str:
+        """Mask API key for display (show only last 4 characters)."""
+        if len(api_key) <= 4:
+            return "****"
+        return f"sk-...{api_key[-4:]}"
+
+    def add_key(self, api_key: str, key_name: str, key_description: str = "") -> str:
+        """Add a new API key to the database."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Generate unique key_id
+        key_id = f"key_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        api_key_hash = self._hash_api_key(api_key)
+
+        try:
+            cursor.execute('''
+                INSERT INTO api_keys (key_id, key_name, key_description, api_key_hash, is_active)
+                VALUES (?, ?, ?, ?, 1)
+            ''', (key_id, key_name, key_description, api_key_hash))
+
+            conn.commit()
+            conn.close()
+            return key_id
+        except sqlite3.IntegrityError:
+            conn.close()
+            raise ValueError(f"Key with name '{key_name}' already exists")
+
+    def remove_key(self, key_id: str = None, key_name: str = None):
+        """Remove an API key from the database."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        if key_id:
+            cursor.execute("DELETE FROM api_keys WHERE key_id = ?", (key_id,))
+        elif key_name:
+            cursor.execute("DELETE FROM api_keys WHERE key_name = ?", (key_name,))
+        else:
+            conn.close()
+            raise ValueError("Either key_id or key_name must be provided")
+
+        conn.commit()
+        conn.close()
+
+    def list_keys(self) -> List[Dict]:
+        """List all API keys in the database."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT key_id, key_name, key_description, is_active, created_at
+            FROM api_keys
+            ORDER BY created_at DESC
+        ''')
+
+        keys = []
+        for row in cursor.fetchall():
+            keys.append({
+                'key_id': row[0],
+                'key_name': row[1],
+                'key_description': row[2],
+                'is_active': bool(row[3]),
+                'created_at': row[4]
+            })
+
+        conn.close()
+        return keys
+
+    def get_key(self, key_id: str = None, key_name: str = None) -> Optional[Dict]:
+        """Get a specific API key by ID or name."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        if key_id:
+            cursor.execute('''
+                SELECT key_id, key_name, key_description, is_active, created_at
+                FROM api_keys WHERE key_id = ?
+            ''', (key_id,))
+        elif key_name:
+            cursor.execute('''
+                SELECT key_id, key_name, key_description, is_active, created_at
+                FROM api_keys WHERE key_name = ?
+            ''', (key_name,))
+        else:
+            conn.close()
+            return None
+
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            return {
+                'key_id': row[0],
+                'key_name': row[1],
+                'key_description': row[2],
+                'is_active': bool(row[3]),
+                'created_at': row[4]
+            }
+        return None
+
+    def update_key_status(self, key_id: str, is_active: bool):
+        """Enable or disable an API key."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            UPDATE api_keys SET is_active = ? WHERE key_id = ?
+        ''', (1 if is_active else 0, key_id))
+
+        conn.commit()
+        conn.close()
+
+    def get_key_usage_summary(self, key_id: str, days: int = 30) -> Dict:
+        """Get usage summary for a specific key."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Get total usage for the key
+        cursor.execute('''
+            SELECT
+                SUM(total_tokens) as total_tokens,
+                SUM(cost) as total_cost,
+                COUNT(*) as total_calls
+            FROM api_calls
+            WHERE key_id = ? AND timestamp >= DATETIME('now', '-{} days')
+        '''.format(days), (key_id,))
+
+        result = cursor.fetchone()
+        conn.close()
+
+        return {
+            'key_id': key_id,
+            'total_tokens': result[0] or 0,
+            'total_cost': result[1] or 0.0,
+            'total_calls': result[2] or 0,
+            'days': days
+        }
+
+    # ============================================================================
+    # END KEY MANAGEMENT METHODS
+    # ============================================================================
+
     def get_current_usage(self) -> Optional[Dict]:
         """Get current usage from OpenAI API."""
         try:
@@ -173,52 +405,67 @@ class OpenAIUsageTracker:
             'recent_calls': recent_calls
         }
     
-    def create_session(self, session_id: str = None) -> str:
+    def create_session(self, session_id: str = None, key_id: str = None) -> str:
         """Create a new usage session."""
         if not session_id:
             session_id = f"session_{int(time.time())}"
-        
+
+        # Use instance key_id if not provided
+        if key_id is None:
+            key_id = self.key_id
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
-        # End any existing active sessions
-        cursor.execute('''
-            UPDATE usage_sessions 
-            SET is_active = 0, end_time = ? 
-            WHERE is_active = 1
-        ''', (datetime.now().isoformat(),))
-        
+
+        # End any existing active sessions for this key
+        if key_id:
+            cursor.execute('''
+                UPDATE usage_sessions
+                SET is_active = 0, end_time = ?
+                WHERE is_active = 1 AND key_id = ?
+            ''', (datetime.now().isoformat(), key_id))
+        else:
+            cursor.execute('''
+                UPDATE usage_sessions
+                SET is_active = 0, end_time = ?
+                WHERE is_active = 1 AND key_id IS NULL
+            ''', (datetime.now().isoformat(),))
+
         # Create new session
         cursor.execute('''
-            INSERT OR REPLACE INTO usage_sessions 
-            (session_id, start_time, is_active) 
-            VALUES (?, ?, 1)
-        ''', (session_id, datetime.now().isoformat()))
-        
+            INSERT OR REPLACE INTO usage_sessions
+            (session_id, key_id, start_time, is_active)
+            VALUES (?, ?, ?, 1)
+        ''', (session_id, key_id, datetime.now().isoformat()))
+
         conn.commit()
         conn.close()
-        
+
         return session_id
     
-    def log_api_call(self, session_id: str, model: str, prompt_tokens: int, 
-                     completion_tokens: int, cost: float = 0.0):
+    def log_api_call(self, session_id: str, model: str, prompt_tokens: int,
+                     completion_tokens: int, cost: float = 0.0, key_id: str = None):
         """Log an API call to the database."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
+        # Use instance key_id if not provided
+        if key_id is None:
+            key_id = self.key_id
+
         total_tokens = prompt_tokens + completion_tokens
-        
+
         # Insert API call
         cursor.execute('''
-            INSERT INTO api_calls 
-            (session_id, timestamp, model, prompt_tokens, completion_tokens, total_tokens, cost)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (session_id, datetime.now().isoformat(), model, prompt_tokens, 
+            INSERT INTO api_calls
+            (session_id, key_id, timestamp, model, prompt_tokens, completion_tokens, total_tokens, cost)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (session_id, key_id, datetime.now().isoformat(), model, prompt_tokens,
               completion_tokens, total_tokens, cost))
-        
+
         # Update session totals
         cursor.execute('''
-            UPDATE usage_sessions 
+            UPDATE usage_sessions
             SET total_tokens = total_tokens + ?,
                 prompt_tokens = prompt_tokens + ?,
                 completion_tokens = completion_tokens + ?,
@@ -226,38 +473,60 @@ class OpenAIUsageTracker:
                 model = ?
             WHERE session_id = ?
         ''', (total_tokens, prompt_tokens, completion_tokens, cost, model, session_id))
-        
+
         conn.commit()
         conn.close()
 
-    def update_daily_usage(self):
+    def update_daily_usage(self, key_id: str = None):
         """Update daily usage summary."""
         today = datetime.now().strftime("%Y-%m-%d")
+
+        # Use instance key_id if not provided
+        if key_id is None:
+            key_id = self.key_id
 
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Get today's usage data
-        cursor.execute('''
-            SELECT
-                SUM(total_tokens) as total_tokens,
-                SUM(cost) as total_cost,
-                COUNT(*) as api_calls_count,
-                GROUP_CONCAT(DISTINCT model) as models_used
-            FROM api_calls
-            WHERE DATE(timestamp) = ?
-        ''', (today,))
+        # Get today's usage data for this key
+        if key_id:
+            cursor.execute('''
+                SELECT
+                    SUM(total_tokens) as total_tokens,
+                    SUM(cost) as total_cost,
+                    COUNT(*) as api_calls_count,
+                    GROUP_CONCAT(DISTINCT model) as models_used
+                FROM api_calls
+                WHERE DATE(timestamp) = ? AND key_id = ?
+            ''', (today, key_id))
+        else:
+            cursor.execute('''
+                SELECT
+                    SUM(total_tokens) as total_tokens,
+                    SUM(cost) as total_cost,
+                    COUNT(*) as api_calls_count,
+                    GROUP_CONCAT(DISTINCT model) as models_used
+                FROM api_calls
+                WHERE DATE(timestamp) = ? AND key_id IS NULL
+            ''', (today,))
 
         result = cursor.fetchone()
         if result and result[0]:
             total_tokens, total_cost, api_calls_count, models_used = result
 
             # Calculate burn rates for today
-            cursor.execute('''
-                SELECT total_tokens, timestamp FROM api_calls
-                WHERE DATE(timestamp) = ?
-                ORDER BY timestamp
-            ''', (today,))
+            if key_id:
+                cursor.execute('''
+                    SELECT total_tokens, timestamp FROM api_calls
+                    WHERE DATE(timestamp) = ? AND key_id = ?
+                    ORDER BY timestamp
+                ''', (today, key_id))
+            else:
+                cursor.execute('''
+                    SELECT total_tokens, timestamp FROM api_calls
+                    WHERE DATE(timestamp) = ? AND key_id IS NULL
+                    ORDER BY timestamp
+                ''', (today,))
 
             calls = cursor.fetchall()
             burn_rates = []
@@ -279,53 +548,89 @@ class OpenAIUsageTracker:
             # Insert or update daily summary
             cursor.execute('''
                 INSERT OR REPLACE INTO daily_usage
-                (date, total_tokens, total_cost, api_calls_count, models_used, avg_burn_rate, peak_burn_rate)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (today, total_tokens, total_cost, api_calls_count, models_used, avg_burn_rate, peak_burn_rate))
+                (date, key_id, total_tokens, total_cost, api_calls_count, models_used, avg_burn_rate, peak_burn_rate)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (today, key_id, total_tokens, total_cost, api_calls_count, models_used, avg_burn_rate, peak_burn_rate))
 
         conn.commit()
         conn.close()
 
-    def get_usage_analytics(self, days=7) -> Dict:
+    def get_usage_analytics(self, days=7, key_id: str = None) -> Dict:
         """Get usage analytics for the last N days."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
+        # Use instance key_id if not provided
+        if key_id is None:
+            key_id = self.key_id
+
         # Get daily usage for last N days
-        cursor.execute('''
-            SELECT * FROM daily_usage
-            WHERE date >= DATE('now', '-{} days')
-            ORDER BY date DESC
-        '''.format(days))
+        if key_id:
+            cursor.execute('''
+                SELECT * FROM daily_usage
+                WHERE date >= DATE('now', '-{} days') AND key_id = ?
+                ORDER BY date DESC
+            '''.format(days), (key_id,))
+        else:
+            cursor.execute('''
+                SELECT * FROM daily_usage
+                WHERE date >= DATE('now', '-{} days') AND key_id IS NULL
+                ORDER BY date DESC
+            '''.format(days))
 
         daily_data = cursor.fetchall()
 
         # Get model usage breakdown
-        cursor.execute('''
-            SELECT
-                model,
-                SUM(total_tokens) as total_tokens,
-                SUM(cost) as total_cost,
-                COUNT(*) as call_count
-            FROM api_calls
-            WHERE timestamp >= DATETIME('now', '-{} days')
-            GROUP BY model
-            ORDER BY total_tokens DESC
-        '''.format(days))
+        if key_id:
+            cursor.execute('''
+                SELECT
+                    model,
+                    SUM(total_tokens) as total_tokens,
+                    SUM(cost) as total_cost,
+                    COUNT(*) as call_count
+                FROM api_calls
+                WHERE timestamp >= DATETIME('now', '-{} days') AND key_id = ?
+                GROUP BY model
+                ORDER BY total_tokens DESC
+            '''.format(days), (key_id,))
+        else:
+            cursor.execute('''
+                SELECT
+                    model,
+                    SUM(total_tokens) as total_tokens,
+                    SUM(cost) as total_cost,
+                    COUNT(*) as call_count
+                FROM api_calls
+                WHERE timestamp >= DATETIME('now', '-{} days') AND key_id IS NULL
+                GROUP BY model
+                ORDER BY total_tokens DESC
+            '''.format(days))
 
         model_breakdown = cursor.fetchall()
 
         # Get hourly usage pattern
-        cursor.execute('''
-            SELECT
-                strftime('%H', timestamp) as hour,
-                AVG(total_tokens) as avg_tokens,
-                COUNT(*) as call_count
-            FROM api_calls
-            WHERE timestamp >= DATETIME('now', '-{} days')
-            GROUP BY strftime('%H', timestamp)
-            ORDER BY hour
-        '''.format(days))
+        if key_id:
+            cursor.execute('''
+                SELECT
+                    strftime('%H', timestamp) as hour,
+                    AVG(total_tokens) as avg_tokens,
+                    COUNT(*) as call_count
+                FROM api_calls
+                WHERE timestamp >= DATETIME('now', '-{} days') AND key_id = ?
+                GROUP BY strftime('%H', timestamp)
+                ORDER BY hour
+            '''.format(days), (key_id,))
+        else:
+            cursor.execute('''
+                SELECT
+                    strftime('%H', timestamp) as hour,
+                    AVG(total_tokens) as avg_tokens,
+                    COUNT(*) as call_count
+                FROM api_calls
+                WHERE timestamp >= DATETIME('now', '-{} days') AND key_id IS NULL
+                GROUP BY strftime('%H', timestamp)
+                ORDER BY hour
+            '''.format(days))
 
         hourly_pattern = cursor.fetchall()
 
@@ -335,6 +640,76 @@ class OpenAIUsageTracker:
             'daily_data': daily_data,
             'model_breakdown': model_breakdown,
             'hourly_pattern': hourly_pattern,
+            'period_days': days,
+            'key_id': key_id
+        }
+
+    def get_all_keys_analytics(self, days=7) -> List[Dict]:
+        """Get analytics for all keys."""
+        keys = self.list_keys()
+        all_analytics = []
+
+        for key in keys:
+            if key['is_active']:
+                analytics = self.get_usage_analytics(days=days, key_id=key['key_id'])
+                usage_summary = self.get_key_usage_summary(key['key_id'], days=days)
+
+                all_analytics.append({
+                    'key_info': key,
+                    'analytics': analytics,
+                    'summary': usage_summary
+                })
+
+        return all_analytics
+
+    def compare_keys(self, days=30) -> Dict:
+        """Compare usage across all keys."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Get usage summary for each key
+        cursor.execute('''
+            SELECT
+                k.key_id,
+                k.key_name,
+                SUM(a.total_tokens) as total_tokens,
+                SUM(a.cost) as total_cost,
+                COUNT(a.id) as total_calls
+            FROM api_keys k
+            LEFT JOIN api_calls a ON k.key_id = a.key_id
+            WHERE a.timestamp >= DATETIME('now', '-{} days')
+            GROUP BY k.key_id, k.key_name
+            ORDER BY total_tokens DESC
+        '''.format(days))
+
+        key_comparisons = []
+        for row in cursor.fetchall():
+            key_comparisons.append({
+                'key_id': row[0],
+                'key_name': row[1],
+                'total_tokens': row[2] or 0,
+                'total_cost': row[3] or 0.0,
+                'total_calls': row[4] or 0
+            })
+
+        # Get total across all keys
+        cursor.execute('''
+            SELECT
+                SUM(total_tokens) as total_tokens,
+                SUM(cost) as total_cost,
+                COUNT(*) as total_calls
+            FROM api_calls
+            WHERE timestamp >= DATETIME('now', '-{} days')
+        '''.format(days))
+
+        total_row = cursor.fetchone()
+        conn.close()
+
+        return {
+            'key_comparisons': key_comparisons,
+            'total_tokens': total_row[0] or 0,
+            'total_cost': total_row[1] or 0.0,
+            'total_calls': total_row[2] or 0,
             'period_days': days
         }
 
@@ -531,6 +906,25 @@ def parse_args():
                         help='Number of days for analytics (default: 7)')
     parser.add_argument('--budget', type=float,
                         help='Set monthly budget limit in USD')
+
+    # Multi-key management arguments
+    parser.add_argument('--add-key', action='store_true',
+                        help='Add a new API key')
+    parser.add_argument('--key-name', type=str,
+                        help='Name for the API key (required with --add-key)')
+    parser.add_argument('--key-description', type=str, default='',
+                        help='Description for the API key')
+    parser.add_argument('--list-keys', action='store_true',
+                        help='List all API keys')
+    parser.add_argument('--remove-key', type=str,
+                        help='Remove an API key by name or ID')
+    parser.add_argument('--key-id', type=str,
+                        help='Specific key ID to use for monitoring/analytics')
+    parser.add_argument('--compare-keys', action='store_true',
+                        help='Compare usage across all keys')
+    parser.add_argument('--all-keys', action='store_true',
+                        help='Show analytics for all keys')
+
     return parser.parse_args()
 
 
@@ -552,7 +946,7 @@ def get_token_limit(plan, custom_limit=None):
 
 def create_demo_session(tracker):
     """Create demo session with simulated data for testing."""
-    session_id = tracker.create_session("demo_session")
+    session_id = tracker.create_session("demo_session", key_id=tracker.key_id)
 
     # Simulate some API calls over the last hour
     now = datetime.now()
@@ -572,9 +966,9 @@ def create_demo_session(tracker):
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO api_calls
-            (session_id, timestamp, model, prompt_tokens, completion_tokens, total_tokens, cost)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (session_id, call_time.isoformat(), model, prompt_tokens,
+            (session_id, key_id, timestamp, model, prompt_tokens, completion_tokens, total_tokens, cost)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (session_id, tracker.key_id, call_time.isoformat(), model, prompt_tokens,
               completion_tokens, prompt_tokens + completion_tokens, cost))
         conn.commit()
         conn.close()
@@ -759,12 +1153,124 @@ def main():
 
     # Get API key
     api_key = args.api_key or os.getenv('OPENAI_API_KEY')
+
+    # Initialize tracker (key_id will be set later if needed)
+    tracker = OpenAIUsageTracker(api_key or "demo", args.db_path, key_id=args.key_id)
+
+    # Handle key management commands
+    if args.add_key:
+        if not api_key:
+            print("❌ Error: API key required. Use --api-key or set OPENAI_API_KEY")
+            sys.exit(1)
+        if not args.key_name:
+            print("❌ Error: --key-name required when adding a key")
+            sys.exit(1)
+
+        try:
+            key_id = tracker.add_key(api_key, args.key_name, args.key_description)
+            print(f"✅ API key added successfully!")
+            print(f"   Key ID: {key_id}")
+            print(f"   Name: {args.key_name}")
+            if args.key_description:
+                print(f"   Description: {args.key_description}")
+        except ValueError as e:
+            print(f"❌ Error: {e}")
+            sys.exit(1)
+        return
+
+    if args.list_keys:
+        keys = tracker.list_keys()
+        if not keys:
+            print("📋 No API keys found. Add one with --add-key")
+            return
+
+        print("\n" + "="*80)
+        print("📋 API KEYS")
+        print("="*80 + "\n")
+
+        for key in keys:
+            status = "🟢 Active" if key['is_active'] else "🔴 Inactive"
+            print(f"{status} {key['key_name']}")
+            print(f"   ID: {key['key_id']}")
+            if key['key_description']:
+                print(f"   Description: {key['key_description']}")
+            print(f"   Created: {key['created_at']}")
+
+            # Get usage summary
+            summary = tracker.get_key_usage_summary(key['key_id'], days=30)
+            print(f"   Usage (30 days): {summary['total_tokens']:,} tokens, ${summary['total_cost']:.2f}, {summary['total_calls']} calls")
+            print()
+
+        return
+
+    if args.remove_key:
+        try:
+            tracker.remove_key(key_name=args.remove_key)
+            print(f"✅ API key '{args.remove_key}' removed successfully")
+        except Exception as e:
+            print(f"❌ Error removing key: {e}")
+            sys.exit(1)
+        return
+
+    if args.compare_keys:
+        comparison = tracker.compare_keys(days=args.days)
+
+        print("\n" + "="*80)
+        print(f"📊 KEY COMPARISON - Last {args.days} Days")
+        print("="*80 + "\n")
+
+        if not comparison['key_comparisons']:
+            print("No usage data found for any keys")
+            return
+
+        # Print header
+        print(f"{'Key Name':<20} {'Tokens':>15} {'Cost':>12} {'Calls':>10} {'%':>8}")
+        print("-" * 80)
+
+        # Print each key
+        for key_data in comparison['key_comparisons']:
+            percentage = (key_data['total_tokens'] / comparison['total_tokens'] * 100) if comparison['total_tokens'] > 0 else 0
+            print(f"{key_data['key_name']:<20} {key_data['total_tokens']:>15,} ${key_data['total_cost']:>10.2f} {key_data['total_calls']:>10} {percentage:>7.1f}%")
+
+        print("-" * 80)
+        print(f"{'TOTAL':<20} {comparison['total_tokens']:>15,} ${comparison['total_cost']:>10.2f} {comparison['total_calls']:>10} {'100.0':>7}%")
+        print()
+        return
+
+    if args.all_keys:
+        all_analytics = tracker.get_all_keys_analytics(days=args.days)
+
+        if not all_analytics:
+            print("No active keys found")
+            return
+
+        for key_analytics in all_analytics:
+            key_info = key_analytics['key_info']
+            summary = key_analytics['summary']
+
+            print("\n" + "="*80)
+            print(f"📊 {key_info['key_name']} - Last {args.days} Days")
+            print("="*80 + "\n")
+
+            print(f"🎯 Total Tokens: {summary['total_tokens']:,}")
+            print(f"💰 Total Cost:   ${summary['total_cost']:.2f}")
+            print(f"📞 Total Calls:  {summary['total_calls']}")
+            print()
+
+            # Show model breakdown
+            analytics = key_analytics['analytics']
+            if analytics['model_breakdown']:
+                print("🤖 Model Usage:")
+                for model_data in analytics['model_breakdown']:
+                    print(f"   {model_data[0]}: {model_data[1]:,} tokens, ${model_data[2]:.2f}")
+                print()
+
+        return
+
+    # Check if API key is required for remaining operations
     if not api_key and not args.demo:
         print("Error: OpenAI API key required. Set OPENAI_API_KEY environment variable or use --api-key")
         sys.exit(1)
-
-    # Initialize tracker
-    tracker = OpenAIUsageTracker(api_key or "demo", args.db_path)
 
     # Handle analytics mode
     if args.analytics:

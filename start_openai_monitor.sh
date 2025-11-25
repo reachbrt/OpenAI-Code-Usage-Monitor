@@ -85,6 +85,61 @@ case "$1" in
         echo "💰 Setting monthly budget to $100..."
         python3 openai_usage_monitor.py --budget 100
         ;;
+    "add-key")
+        echo "🔑 Adding new API key..."
+        if [ -z "$2" ]; then
+            echo "❌ Error: Key name required"
+            echo "Usage: $0 add-key <key-name> [description]"
+            exit 1
+        fi
+        if [ -z "$OPENAI_API_KEY" ]; then
+            echo "❌ Error: OPENAI_API_KEY environment variable not set"
+            exit 1
+        fi
+        if [ -n "$3" ]; then
+            python3 openai_usage_monitor.py --add-key --key-name "$2" --key-description "$3"
+        else
+            python3 openai_usage_monitor.py --add-key --key-name "$2"
+        fi
+        ;;
+    "list-keys")
+        echo "📋 Listing all API keys..."
+        python3 openai_usage_monitor.py --list-keys
+        ;;
+    "remove-key")
+        echo "🗑️  Removing API key..."
+        if [ -z "$2" ]; then
+            echo "❌ Error: Key name required"
+            echo "Usage: $0 remove-key <key-name>"
+            exit 1
+        fi
+        python3 openai_usage_monitor.py --remove-key "$2"
+        ;;
+    "compare-keys")
+        echo "📊 Comparing usage across all keys..."
+        if [ -n "$2" ]; then
+            python3 openai_usage_monitor.py --compare-keys --days "$2"
+        else
+            python3 openai_usage_monitor.py --compare-keys --days 30
+        fi
+        ;;
+    "all-keys")
+        echo "📊 Showing analytics for all keys..."
+        if [ -n "$2" ]; then
+            python3 openai_usage_monitor.py --all-keys --days "$2"
+        else
+            python3 openai_usage_monitor.py --all-keys --days 7
+        fi
+        ;;
+    "monitor-key")
+        echo "📊 Monitoring specific key..."
+        if [ -z "$2" ]; then
+            echo "❌ Error: Key ID required"
+            echo "Usage: $0 monitor-key <key-id>"
+            exit 1
+        fi
+        python3 openai_usage_monitor.py --key-id "$2"
+        ;;
     "help"|"-h"|"--help")
         echo "🚀 OpenAI Token Usage Monitor - Enhanced Features"
         echo "================================================"
@@ -111,15 +166,26 @@ case "$1" in
         echo "  budget-50     - Set monthly budget to \$50"
         echo "  budget-100    - Set monthly budget to \$100"
         echo ""
+        echo "🔑 Multi-Key Management:"
+        echo "  add-key <name> [desc]  - Add a new API key"
+        echo "  list-keys              - List all API keys with usage stats"
+        echo "  remove-key <name>      - Remove an API key"
+        echo "  compare-keys [days]    - Compare usage across all keys (default: 30 days)"
+        echo "  all-keys [days]        - Show analytics for all keys (default: 7 days)"
+        echo "  monitor-key <key-id>   - Monitor a specific key"
+        echo ""
         echo "🔧 Other Options:"
         echo "  help          - Show this help message"
         echo ""
         echo "📋 Examples:"
-        echo "  $0 demo              # Test with simulated data"
-        echo "  $0 tier2             # Monitor with Tier 2 limits"
-        echo "  $0 analytics         # View usage analytics"
-        echo "  $0 export-csv        # Export data to CSV"
-        echo "  $0 budget-50         # Set \$50 monthly budget"
+        echo "  $0 demo                          # Test with simulated data"
+        echo "  $0 tier2                         # Monitor with Tier 2 limits"
+        echo "  $0 analytics                     # View usage analytics"
+        echo "  $0 export-csv                    # Export data to CSV"
+        echo "  $0 budget-50                     # Set \$50 monthly budget"
+        echo "  $0 add-key \"Production\" \"Main API key\"  # Add new key"
+        echo "  $0 list-keys                     # List all keys"
+        echo "  $0 compare-keys 30               # Compare keys over 30 days"
         echo ""
         echo "🔑 Setup:"
         echo "  export OPENAI_API_KEY='sk-...' && $0 tier1"

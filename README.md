@@ -9,8 +9,6 @@
 
 A beautiful real-time terminal monitoring tool for OpenAI API token usage. Track your token consumption, burn rate, costs, and get predictions about when you'll run out of tokens.
 
-![OpenAI Usage Monitor Screenshot](doc/screenshot.png)
-
 > **🎭 Try it now**: `./start_openai_monitor.sh demo` - No API key required!
 
 ![OpenAI Token Monitor Screenshot](doc/sc.png)
